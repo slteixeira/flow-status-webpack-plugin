@@ -26,12 +26,11 @@ FlowStatusWebpackPlugin.prototype.apply = function(compiler) {
     }
   }
 
-  function startFlowIfFirstRun(compiler, cb) {
+  function startFlowIfFirstRun(cb) {
     if (firstRun) {
       firstRun = false;
       startFlow(cb);
-    }
-    else {
+    } else {
       cb();
     }
   }
@@ -51,34 +50,34 @@ FlowStatusWebpackPlugin.prototype.apply = function(compiler) {
     }
   }
 
-  var flowError = null
+  var flowError = null;
 
-  function checkItWreckIt(compiler, cb) {
-    startFlowIfFirstRun(compiler, function () {
+  function checkItWreckIt(cb) {
+    startFlowIfFirstRun(function () {
       flowStatus(function success(stdout) {
         onSuccess(stdout);
-
         cb();
       }, function error(stdout) {
         onError(stdout);
 
         flowError = new Error(stdout);
-        // Here we don't pass error to callback because
-        // webpack-dev-middleware would just throw it
-        // and cause webpack dev server to exit with
-        // an error status code. Obviously, having to restart
-        // the development webpack server after every flow
-        // check error would be too annoying.
-        cb()
-      })
-    })
+        // Do not pass error to callback to avoid dev server exit
+        cb();
+      });
+    });
   }
 
-  compiler.plugin('run', checkItWreckIt);
-  compiler.plugin('watch-run', checkItWreckIt);
+  // Webpack 5 hooks
+  compiler.hooks.run.tapAsync('FlowStatusWebpackPlugin', (compilation, callback) => {
+    checkItWreckIt(callback);
+  });
 
-  // If there are flow errors, fail the build before compilation starts.
-  compiler.plugin('compilation', function (compilation) {
+  compiler.hooks.watchRun.tapAsync('FlowStatusWebpackPlugin', (compilation, callback) => {
+    checkItWreckIt(callback);
+  });
+
+  // Add errors to compilation if needed
+  compiler.hooks.compilation.tap('FlowStatusWebpackPlugin', (compilation) => {
     if (flowError) {
       if (failOnError === true) {
         compilation.errors.push(flowError);
